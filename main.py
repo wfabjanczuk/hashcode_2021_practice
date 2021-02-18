@@ -4,9 +4,12 @@ from tqdm import tqdm
 class Solver:
     def __init__(self, file_name):
         self.pizza_count, self.t_2, self.t_3, self.t_4 = [0, 0, 0, 0]
+        self.teams_count = 0
         self.pizza_list = []
         self.sorted_pizza_list = []
+        self.merged_pizza_list = []
         self.team_dict = {}
+        self.all_ingredients = set()
 
         self.current_team_id = None
         self.current_count = None
@@ -23,11 +26,13 @@ class Solver:
         with open(self.input_path_prefix + self.file_name) as file:
             header_line = file.readline()
             self.pizza_count, self.t_2, self.t_3, self.t_4 = [int(i) for i in header_line.strip().split()]
+            self.teams_count = self.t_2 + self.t_3 + self.t_4
 
             pizza_id = 0
             for line in file.readlines():
                 ingredients = line.strip().split(' ')
                 ingredients_count = int(ingredients.pop(0))
+                self.all_ingredients = self.all_ingredients.union(set(ingredients))
 
                 pizza = {
                     "id": pizza_id,
@@ -42,107 +47,115 @@ class Solver:
             self.team_dict = {
                 "2": {
                     "first_free_id": 0,
-                    "list": [{"id": i, "pizzas": [], "max_pizzas": 2, "points": 0} for i in range(self.t_2)]
+                    "list": self.get_empty_team_list(2, self.t_2)
                 },
                 "3": {
                     "first_free_id": 0,
-                    "list": [{"id": i, "pizzas": [], "max_pizzas": 3, "points": 0} for i in range(self.t_3)]
+                    "list": self.get_empty_team_list(3, self.t_3)
                 },
                 "4": {
                     "first_free_id": 0,
-                    "list": [{"id": i, "pizzas": [], "max_pizzas": 4, "points": 0} for i in range(self.t_4)]
+                    "list": self.get_empty_team_list(4, self.t_4)
                 }
             }
 
-    def solve(self):
-        self.sorted_pizza_list = sorted(self.pizza_list, key=lambda item: item["ingredients_count"], reverse=True)
+    @staticmethod
+    def get_empty_team_list(max_pizzas, count):
+        return [{"id": i, "pizzas": [], "max_pizzas": max_pizzas, "points": 0} for i in range(count)]
 
-        for _ in tqdm(range(self.pizza_count)):
-            if not self.can_work:
+    def solve(self):
+        self.sorted_pizza_list = sorted(self.pizza_list, key=self.distance_from_mean, reverse=True)
+
+        while self.filled_teams_count < self.teams_count:
+            filled_before = self.filled_teams_count
+
+            print("Assigning pizzas everywhere by best points possible")
+            for _ in tqdm(range(len(self.sorted_pizza_list))):
+                best_pizza = self.sorted_pizza_list.pop()
+                best_team = self.add_pizza_to_best_team(best_pizza)
+
+                if best_team is None:
+                    break
+
+            self.sorted_pizza_list += sorted(self.get_reusable_pizzas(), key=self.distance_from_mean, reverse=True)
+            if len(self.sorted_pizza_list) == 0:
                 break
-            self.assign_a_pizza()
+
+            filled_after = self.filled_teams_count
+
+            if filled_after == filled_before:
+                break
+
+        if len(self.sorted_pizza_list) == 0:
+            return
+
+        leftover_teams = self.get_leftover_teams()
+
+        print("Assigning reusable pizzas to leftover teams")
+        for _ in tqdm(range(len(leftover_teams))):
+            filled_before = self.filled_teams_count
+
+            current_team = leftover_teams.pop()
+            while len(self.sorted_pizza_list):
+                result = self.assign_best_pizza_to_team(current_team)
+
+                if result is False:
+                    break
+
+            filled_after = self.filled_teams_count
+
+            if filled_after == filled_before:
+                break
 
         self.print_result()
 
-    def assign_a_pizza(self):
-        if self.is_current_team_filled():
-            self.current_team_id = self.get_best_team_id()
+    def distance_from_mean(self, pizza):
+        return (pizza["ingredients_count"] - len(self.all_ingredients) / 2.0) ** 2
 
-        if self.current_team_id is None:
-            self.can_work = False
-            return
+    def add_pizza_to_best_team(self, best_pizza):
+        best_score = None
+        best_team_id = None
+        best_count = None
 
-        best_pizza = self.get_best_pizza()
-
-        if best_pizza is None:
-            self.can_work = False
-            return
-
-        self.add_pizza_to_current_team(best_pizza)
-        if self.is_current_team_filled():
-            self.filled_teams_count += 1
-
-    def is_current_team_filled(self):
-        if self.is_start:
-            self.is_start = False
-            return True
-
-        current_team = self.get_current_team()
-        return len(current_team["pizzas"]) >= current_team["max_pizzas"]
-
-    def get_current_team(self):
-        return self.team_dict[self.current_count]["list"][self.current_team_id]
-
-    def add_pizza_to_current_team(self, pizza):
-        self.team_dict[self.current_count]["list"][self.current_team_id]["pizzas"].append(pizza)
-
-    # bigger team => possibly more ingredients and higher square
-    def get_best_team_id(self):
-        counts = ["4", "3", "2"]
-
-        for count in counts:
-
-            is_pizza_count_enough = int(count) <= len(self.sorted_pizza_list)
-            is_any_team_left = self.team_dict[count]["first_free_id"] < len(self.team_dict[count]["list"])
-
-            if is_pizza_count_enough and is_any_team_left:
-                self.current_team_id = self.team_dict[count]["first_free_id"]
-                self.current_count = count
-
-                self.team_dict[count]["first_free_id"] += 1
-                return self.current_team_id
-
-        return None
-
-    def get_best_pizza(self):
-        if not len(self.sorted_pizza_list):
-            return None
-
-        current_team = self.get_current_team()
-        current_ingredients = set()
-
-        for assigned_pizza in current_team["pizzas"]:
-            current_ingredients.union(set(assigned_pizza["ingredients"]))
-
-        max_income = 0
-        best_loop_id = None
         loop_id = 0
+        for count in self.team_dict:
+            team_id = 0
+            for team in self.team_dict[count]["list"]:
+                if len(team["pizzas"]) < team["max_pizzas"]:
+                    score = self.get_score(team, best_pizza)
 
-        for possible_pizza in self.sorted_pizza_list:
-            new_ingredients = set(possible_pizza["ingredients"]).difference(current_ingredients)
+                    if best_score is None or score > best_score:
+                        best_score = score
+                        best_team_id = team_id
+                        best_count = count
 
-            if len(new_ingredients) > max_income:
-                max_income = len(new_ingredients)
-                best_loop_id = loop_id
+                team_id += 1
+                loop_id += 1
 
-            loop_id += 1
+                if loop_id > 10000:
+                    break
+
             if loop_id > 10000:
                 break
 
-        if best_loop_id is None:
-            return self.sorted_pizza_list.pop()
+        if best_team_id is not None:
+            self.team_dict[best_count]["list"][best_team_id]["pizzas"].append(best_pizza)
+
+            current_team = self.team_dict[best_count]["list"][best_team_id]
+            if len(current_team["pizzas"]) == current_team["max_pizzas"]:
+                self.filled_teams_count += 1
+            return True
         else:
-            return self.sorted_pizza_list.pop(best_loop_id)
+            return False
+
+    @staticmethod
+    def get_score(team, pizza):
+        current_ingredients = {
+            i for p in team["pizzas"] for i in p["ingredients"]
+        }
+
+        return len(current_ingredients.union(pizza["ingredients"])) ** 2 - (
+                len(current_ingredients) + pizza["ingredients_count"]) / 2.0
 
     def print_result(self):
         with open(self.output_path_prefix + self.file_name, 'w+') as file:
@@ -153,6 +166,57 @@ class Solver:
                     if team["max_pizzas"] == len(team["pizzas"]):
                         line = str(team["max_pizzas"]) + " " + " ".join([str(p["id"]) for p in team["pizzas"]])
                         file.write(line + "\n")
+
+    def get_reusable_pizzas(self):
+        reusable_pizzas = []
+
+        for count in self.team_dict:
+            for team in self.team_dict[count]["list"]:
+                if team["max_pizzas"] != len(team["pizzas"]):
+                    reusable_pizzas += team["pizzas"]
+                    self.team_dict[count]["list"][team["id"]]["pizzas"] = []
+
+        return reusable_pizzas
+
+    def get_leftover_teams(self):
+        leftover_teams = []
+
+        for count in ["4", "3", "2"]:
+            for team in self.team_dict[count]["list"]:
+                if team["max_pizzas"] != len(team["pizzas"]):
+                    leftover_teams.append(team)
+
+        return leftover_teams
+
+    def assign_best_pizza_to_team(self, current_team):
+        if not len(self.sorted_pizza_list):
+            return False
+
+        max_score = None
+        best_loop_id = None
+        loop_id = 0
+
+        for possible_pizza in self.sorted_pizza_list:
+            score = self.get_score(current_team, possible_pizza)
+
+            if max_score is None or score > max_score:
+                max_score = score
+                best_loop_id = loop_id
+
+            loop_id += 1
+
+        best_pizza = self.sorted_pizza_list.pop(best_loop_id)
+        return self.add_pizza_to_team(best_pizza, current_team)
+
+    def add_pizza_to_team(self, pizza, team):
+        self.team_dict[str(team["max_pizzas"])]["list"][team["id"]]["pizzas"].append(pizza)
+        updated_team = self.team_dict[str(team["max_pizzas"])]["list"][team["id"]]
+
+        if len(updated_team["pizzas"]) == updated_team["max_pizzas"]:
+            self.filled_teams_count += 1
+            return False
+
+        return True
 
 
 if __name__ == '__main__':
@@ -167,3 +231,4 @@ if __name__ == '__main__':
     for file_name in file_name_list:
         print(file_name + " progress:")
         Solver(file_name).solve()
+        print()
