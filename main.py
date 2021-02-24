@@ -78,7 +78,10 @@ class Solver(IO):
     def fill_teams_with_pizzas(self):
         self.sorted_pizza_list = sorted(self.pizza_list, key=self.distance_from_mean, reverse=True)
         self.assign_pizzas_by_best_points_possible()
-        self.assign_reusable_pizzas_to_leftover_teams()
+        self.assign_reusable_pizzas_to_leftover_teams(True)
+
+        if self.input_file_name == 'a_example':
+            self.assign_reusable_pizzas_to_leftover_teams(False)
 
     def distance_from_mean(self, pizza):
         return (len(pizza["ingredients"]) - self.all_ingredients_count / 2.0) ** 2
@@ -183,17 +186,16 @@ class Solver(IO):
 
         return reusable_pizzas
 
-    def assign_reusable_pizzas_to_leftover_teams(self):
-        if len(self.sorted_pizza_list) == 0:
-            return
-
+    def assign_reusable_pizzas_to_leftover_teams(self, ascending):
         self.sorted_pizza_list = sorted(
-            self.sorted_pizza_list,
+            self.sorted_pizza_list + self.get_reusable_pizzas(),
             key=self.distance_from_mean,
             reverse=False
         )
+        if len(self.sorted_pizza_list) == 0:
+            return
 
-        leftover_teams = self.get_leftover_teams()
+        leftover_teams = self.get_leftover_teams(ascending)
 
         print(self.assign_reusable_pizzas_to_leftover_teams.__name__)
         for _ in tqdm(range(len(leftover_teams))):
@@ -208,10 +210,15 @@ class Solver(IO):
             if self.full_teams_count == filled_before:
                 break
 
-    def get_leftover_teams(self):
+    def get_leftover_teams(self, ascending):
         leftover_teams = []
 
-        for pizza_count in reversed(self.team_count_dict.keys()):
+        if ascending is True:
+            team_count_keys = reversed(self.team_count_dict.keys())
+        else:
+            team_count_keys = self.team_count_dict.keys()
+
+        for pizza_count in team_count_keys:
             for team in self.team_dict[pizza_count]:
                 if team["max_pizzas"] != len(team["pizzas"]):
                     leftover_teams.append(team)
