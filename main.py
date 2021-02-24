@@ -29,7 +29,7 @@ class IO:
 
     def initialize_pizza_list(self, input_file):
         for pizza_id, line in enumerate(input_file.readlines()):
-            ingredients = line.strip().split(' ')
+            ingredients = line.strip().split(' ')[1:]
 
             self.pizza_list.append({
                 "id": pizza_id,
