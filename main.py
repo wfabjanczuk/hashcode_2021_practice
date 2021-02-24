@@ -4,7 +4,7 @@ from tqdm import tqdm
 class IO:
     def __init__(self, input_file_name):
         self.pizza_count = 0
-        self.team_count_dict = {"2": 0, "3": 0, "4": 0}
+        self.team_count_dict = {"4": 0, "3": 0, "2": 0}
 
         self.pizza_list = []
         self.sorted_pizza_list = []
@@ -24,7 +24,7 @@ class IO:
             self.pizza_count, two_teams, three_teams, four_teams = [int(i) for i in header_line.strip().split()]
             self.initialize_pizza_list(file)
 
-            self.team_count_dict = {"2": two_teams, "3": three_teams, "4": four_teams}
+            self.team_count_dict = {"4": four_teams, "3": three_teams, "2": two_teams}
             self.initialize_team_dicts(self.team_count_dict)
 
     def initialize_pizza_list(self, input_file):
@@ -112,7 +112,7 @@ class Solver(IO):
         for pizza_count in self.team_dict:
             for team in self.team_dict[pizza_count]:
                 if len(team["pizzas"]) < team["max_pizzas"]:
-                    score = self.get_team_pizza_score(team, pizza)
+                    score = self.get_team_pizza_adaptive_score(team, pizza)
 
                     if best_score is None or score > best_score:
                         best_score = score
@@ -125,13 +125,11 @@ class Solver(IO):
         return best_team
 
     @staticmethod
-    def get_team_pizza_score(team, pizza):
+    def get_team_pizza_adaptive_score(team, pizza):
         current_ingredients = {ingredient for pizza in team["pizzas"] for ingredient in pizza["ingredients"]}
-
         new_score = len(current_ingredients.union(pizza["ingredients"])) ** 2
-        common_ingredients_squared = (len(current_ingredients) + len(pizza["ingredients"])) / 2.0
 
-        return new_score - common_ingredients_squared
+        return new_score / (len(team["pizzas"]) + 1)
 
     def get_reusable_pizzas(self):
         reusable_pizzas = []
@@ -147,6 +145,12 @@ class Solver(IO):
     def assign_reusable_pizzas_to_leftover_teams(self):
         if len(self.sorted_pizza_list) == 0:
             return
+
+        self.sorted_pizza_list = sorted(
+            self.sorted_pizza_list,
+            key=self.distance_from_mean,
+            reverse=False
+        )
 
         leftover_teams = self.get_leftover_teams()
 
@@ -178,7 +182,7 @@ class Solver(IO):
         best_pizza_loop_id = None
 
         for pizza_loop_id, pizza in enumerate(self.sorted_pizza_list):
-            score = self.get_team_pizza_score(team, pizza)
+            score = self.get_team_pizza_adaptive_score(team, pizza)
 
             if best_score is None or score > best_score:
                 best_score = score
