@@ -9,9 +9,11 @@ class IO:
         self.pizza_list = []
         self.sorted_pizza_list = []
         self.all_ingredients = set()
+        self.all_ingredients_count = 0
 
         self.team_dict = {}
         self.full_teams_count = 0
+        self.all_teams_count = 0
 
         self.input_path_prefix = './input/'
         self.output_path_prefix = './output/'
@@ -23,9 +25,11 @@ class IO:
             header_line = file.readline()
             self.pizza_count, two_teams, three_teams, four_teams = [int(i) for i in header_line.strip().split()]
             self.initialize_pizza_list(file)
+            self.all_ingredients_count = len(self.all_ingredients)
 
             self.team_count_dict = {"4": four_teams, "3": three_teams, "2": two_teams}
             self.initialize_team_dicts(self.team_count_dict)
+            self.all_teams_count = sum(self.team_count_dict.values())
 
     def initialize_pizza_list(self, input_file):
         for pizza_id, line in enumerate(input_file.readlines()):
@@ -77,16 +81,19 @@ class Solver(IO):
         self.assign_reusable_pizzas_to_leftover_teams()
 
     def distance_from_mean(self, pizza):
-        return (len(pizza["ingredients"]) - len(self.all_ingredients) / 2.0) ** 2
+        return (len(pizza["ingredients"]) - self.all_ingredients_count / 2.0) ** 2
 
     def assign_pizzas_by_best_points_possible(self):
-        all_teams_count = sum(self.team_count_dict.values())
-        while self.full_teams_count < all_teams_count:
+        self.add_first_pizza(6)
+
+        while self.full_teams_count < self.all_teams_count:
 
             filled_before = self.full_teams_count
 
             print(self.assign_pizzas_by_best_points_possible.__name__)
             for _ in tqdm(range(len(self.sorted_pizza_list))):
+                if len(self.sorted_pizza_list) == 0:
+                    break
 
                 best_pizza = self.sorted_pizza_list.pop()
                 best_team = self.find_best_team_for_pizza(best_pizza, 10000)
@@ -94,6 +101,8 @@ class Solver(IO):
                     break
                 else:
                     self.add_pizza_to_team(best_pizza, best_team)
+                    if self.is_team_full(best_team):
+                        self.add_first_pizza(1)
 
             self.sorted_pizza_list = sorted(
                 self.sorted_pizza_list + self.get_reusable_pizzas(),
@@ -103,6 +112,38 @@ class Solver(IO):
 
             if self.full_teams_count == filled_before or len(self.sorted_pizza_list) == 0:
                 break
+
+    def add_first_pizza(self, suggested_insertions):
+        max_insertions = self.get_max_insertions(suggested_insertions)
+        insertions = 0
+
+        while insertions < max_insertions:
+            if len(self.sorted_pizza_list) == 0:
+                break
+
+            pizza = self.sorted_pizza_list.pop()
+            team = self.find_empty_team(10000)
+
+            if team is None:
+                self.sorted_pizza_list.append(pizza)
+                return
+
+            self.add_pizza_to_team(pizza, team)
+            insertions += 1
+
+    def find_empty_team(self, team_loop_limit):
+        team_loop_id = 0
+        for pizza_count in self.team_dict:
+            for team in self.team_dict[pizza_count]:
+                if len(team["pizzas"]) == 0:
+                    return team
+                if team_loop_id > team_loop_limit:
+                    return None
+                team_loop_id += 1
+        return None
+
+    def get_max_insertions(self, suggested_insertions):
+        return min(suggested_insertions, int(self.all_teams_count / 5 + 1))
 
     def find_best_team_for_pizza(self, pizza, team_loop_limit):
         best_score = None
