@@ -83,6 +83,8 @@ class Solver(IO):
         if self.input_file_name == 'a_example':
             self.assign_reusable_pizzas_to_leftover_teams(False)
 
+        self.optimize_selection()
+
     def distance_from_mean(self, pizza):
         return (len(pizza["ingredients"]) - self.all_ingredients_count / 2.0) ** 2
 
@@ -168,12 +170,15 @@ class Solver(IO):
 
         return best_team
 
-    @staticmethod
-    def get_team_pizza_adaptive_score(team, pizza):
-        current_ingredients = {ingredient for pizza in team["pizzas"] for ingredient in pizza["ingredients"]}
+    def get_team_pizza_adaptive_score(self, team, pizza):
+        current_ingredients = self.get_team_ingredients(team)
         new_score = len(current_ingredients.union(pizza["ingredients"])) ** 2
 
         return new_score / (len(team["pizzas"]) + 1)
+
+    @staticmethod
+    def get_team_ingredients(team):
+        return {ingredient for pizza in team["pizzas"] for ingredient in pizza["ingredients"]}
 
     def get_reusable_pizzas(self):
         reusable_pizzas = []
@@ -251,6 +256,95 @@ class Solver(IO):
     @staticmethod
     def is_team_full(team):
         return len(team["pizzas"]) == team["max_pizzas"]
+
+    optimization_runs_dict = {
+        'a_example': 3,
+        'b_little_bit_of_everything.in': 10,
+        'c_many_ingredients.in': 10,
+        'd_many_pizzas.in': 5,
+        'e_many_teams.in': 5
+    }
+
+    optimization_team_loop_limit_dict = {
+        'a_example': 1000,
+        'b_little_bit_of_everything.in': 1000,
+        'c_many_ingredients.in': 100,
+        'd_many_pizzas.in': 100,
+        'e_many_teams.in': 100
+    }
+
+    def optimize_selection(self):
+        run_count = self.get_optimization_runs()
+        for run_id in range(run_count):
+            print(self.optimize_selection.__name__ + ", run=" + str(run_id + 1) + "/" + str(run_count))
+            for pizza_count in self.team_count_dict.keys():
+                for team_id in tqdm(range(len(self.team_dict[pizza_count]))):
+                    team = self.team_dict[pizza_count][team_id]
+                    if self.is_team_full(team):
+                        self.find_pizza_swap(team, self.get_optimization_loop_limit())
+
+    def get_optimization_runs(self):
+        return self.optimization_runs_dict[self.input_file_name]
+
+    def get_optimization_loop_limit(self):
+        return self.optimization_team_loop_limit_dict[self.input_file_name]
+
+    def find_pizza_swap(self, team, team_loop_limit):
+        team_loop_id = 0
+        for pizza_count in self.team_count_dict.keys():
+            if int(pizza_count) == team["max_pizzas"]:
+                min_i = team["id"] + 1
+            else:
+                min_i = 0
+
+            for i in range(min_i, len(self.team_dict[pizza_count])):
+                next_team = self.team_dict[pizza_count][i]
+                if self.is_team_full(next_team) and self.make_pizza_swap(team, next_team):
+                    return
+                team_loop_id += 1
+
+                if team_loop_id > team_loop_limit:
+                    return
+
+    def make_pizza_swap(self, team1, team2):
+        default_score = self.get_team_score(team1) + self.get_team_score(team2)
+
+        best_swap_score = None
+        pizza_id1_for_swap = None
+        pizza_id2_for_swap = None
+
+        for pizza_id1 in range(len(team1["pizzas"])):
+            for pizza_id2 in range(pizza_id1, len(team2["pizzas"])):
+                swap_score = self.get_swap_score(pizza_id1, pizza_id2, team1, team2)
+
+                if swap_score > default_score:
+                    best_swap_score = swap_score
+                    pizza_id1_for_swap = pizza_id1
+                    pizza_id2_for_swap = pizza_id2
+
+        if best_swap_score is None:
+            return False
+
+        pizza1 = team1["pizzas"][pizza_id1_for_swap]
+        pizza2 = team2["pizzas"][pizza_id2_for_swap]
+
+        self.team_dict[str(team1["max_pizzas"])][team1["id"]]["pizzas"][pizza_id1_for_swap] = pizza2
+        self.team_dict[str(team2["max_pizzas"])][team2["id"]]["pizzas"][pizza_id2_for_swap] = pizza1
+
+        return True
+
+    def get_team_score(self, team):
+        ingredients = self.get_team_ingredients(team)
+        return len(ingredients) ** 2
+
+    def get_swap_score(self, pizza_id1, pizza_id2, team1, team2):
+        team1_copy = {"pizzas": team1["pizzas"].copy()}
+        team2_copy = {"pizzas": team2["pizzas"].copy()}
+
+        team1_copy["pizzas"][pizza_id1] = team2["pizzas"][pizza_id2]
+        team2_copy["pizzas"][pizza_id2] = team1["pizzas"][pizza_id1]
+
+        return self.get_team_score(team1_copy) + self.get_team_score(team2_copy)
 
 
 if __name__ == '__main__':
