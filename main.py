@@ -83,8 +83,6 @@ class Solver(IO):
         if self.input_file_name == 'a_example':
             self.assign_reusable_pizzas_to_leftover_teams(False)
 
-        self.optimize_selection()
-
     def distance_from_mean(self, pizza):
         return (len(pizza["ingredients"]) - self.all_ingredients_count / 2.0) ** 2
 
@@ -257,6 +255,12 @@ class Solver(IO):
     def is_team_full(team):
         return len(team["pizzas"]) == team["max_pizzas"]
 
+
+class SolverWithOptimization(Solver):
+    def fill_teams_with_pizzas(self):
+        super().fill_teams_with_pizzas()
+        self.optimize_selection()
+
     optimization_runs_dict = {
         'a_example': 3,
         'b_little_bit_of_everything.in': 10,
@@ -358,5 +362,5 @@ if __name__ == '__main__':
 
     for file_name in file_name_list:
         print(file_name + " progress:")
-        Solver(file_name).solve()
+        SolverWithOptimization(file_name).solve()
         print()
